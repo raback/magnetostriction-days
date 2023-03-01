@@ -191,11 +191,11 @@ CONTAINS
     INTEGER :: av_nd_node, av_nd_bub
 !-------------------------------------------------------------------------------
 
-    MSModel % UseMGS = GetLogical( Material, 'External HB model', found)
-    IF(.not. Found) MSModel % UseMGS = .FALSE.
-    if (.not. MSModel % UseMGS) RETURN
+    IF(.NOT. GetLogical( Material, 'External HB model', found) ) RETURN
 
-    IF(.not. MSModel % Initialized) THEN
+    MSModel % UseMGS = .TRUE.
+
+    IF(.NOT. MSModel % Initialized) THEN
       IF(.not. associated(MSModel % MgDynSolver)) THEN
         av_solver_id = GetInteger( Material, 'AV Solver id', Found)
         IF(.NOT. Found) CALL Fatal('CollectMSModel','AV solver id not given')
@@ -221,6 +221,8 @@ CONTAINS
         MSModel % av_edgebasisdegree = 1
       END IF
       MSModel % Initialized = .TRUE.
+
+      CALL Info('CollectMSModel','Initialized structured for External HB model!')
     END IF
 
     CALL AllocateLocalSolutionArrays()

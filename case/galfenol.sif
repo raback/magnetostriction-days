@@ -16,12 +16,12 @@ End
 ! ///////// Simulation Initialisation \\\\\\\\\
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 25
   Simulation type = steady state
   mesh levels = 1
   Use Mesh Names = Logical True
   steady state max iterations = $ ss_iters
-  steady state max iterations = 1
+  steady state min iterations = 3
   output file = file "$outputfile$.result"
   !binary output = true
   !restart file = file "ms_t1.result"
@@ -150,7 +150,7 @@ end
 ! ///////// SOLVERS \\\\\\\\\
 
 Solver 1 ! avsolver
-  exec solver = never
+  !exec solver = never
   Equation = "mgdyn"
   !Procedure = "MagnetoDynamics" "WhitneyAVSolver"
   Procedure = File "MagnetoStriction" "WhitneyAVSolver"
@@ -194,7 +194,7 @@ Solver 1 ! avsolver
   optimize bandwidth = false
 End
 Solver 2 ! postprocess
-  exec solver = never
+  !exec solver = never
   ! Exec Solver = always
   Equation = "MGDynamicsCalc"
 
@@ -265,8 +265,8 @@ Solver 3 ! stress solver
   steady state Convergence Measure = $ ss_measure
   steady state Convergence Tolerance = $ ss_tol
   steady state relaxation factor = 1
-  linear system save = true
-  linear system save prefix = file "logs/galfenol"
+!  linear system save = true
+!  linear system save prefix = file "logs/galfenol"
 End
 Solver 4 ! resultoutput
     exec solver = after timestep

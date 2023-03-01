@@ -169,7 +169,6 @@ SUBROUTINE MgsStressSolver_Init( Model,Solver,dt,Transient )
 
      INTEGER ::  MaxIter, MinIter, NoModes, Nsize, Dofs
      TYPE(Variable_t), POINTER :: StressSol, iVar, Var, TimeVar
-!     TYPE(MSModel_t) :: MSModel
      LOGICAL :: ExternalHB
 
      CHARACTER(LEN=MAX_NAME_LEN) :: VarName
@@ -1398,7 +1397,7 @@ END SUBROUTINE BCAssembly
      REAL(KIND=dp) :: PriCache(3,3), PriTmp, PriW(3),PriWork(102)
      INTEGER       :: PriN=3, PriLWork=102, PriInfo=0
      REAL(KIND=dp) :: PriAngT1=0, PriAngT2=0, PriAngV(3)=0
-     TYPE(MSModel_t) :: MSModel
+     TYPE(MSModel_t), SAVE :: MSModel
 
 !------------------------------------------------------------------------------
 
@@ -1520,9 +1519,12 @@ END SUBROUTINE BCAssembly
         ! ------------------------
         Material => GetMaterial()
 
-        ! Collect MSModel per-element data here (1)
-        CALL CollectMSModel(Material, Element, MSModel, Model=Model)
-
+        ! Collect MSModel per-element data here (1)        
+        ExternalHB = ListGetLogical( Material, 'External HB model', Found)
+        IF(ExternalHB) THEN
+          CALL CollectMSModel(Material, Element, MSModel, Model=Model)
+        END IF
+          
         CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
             'Heat Expansion Coefficient', Material, n, Element % NodeIndexes, GotHeatExp )
 
@@ -1550,7 +1552,7 @@ END SUBROUTINE BCAssembly
         ! Integrate local stresses:
         ! -------------------------
         ! IntegStuff = GaussPoints( Element )
-        IF(MSModel % UseMGS) THEN
+        IF(ExternalHB) THEN
           IntegStuff = GaussPoints( element, EdgeBasis=.TRUE., &
               PReferenceElement = MSModel % av_piola, EdgeBasisDegree=1)
         ELSE
@@ -1572,7 +1574,7 @@ END SUBROUTINE BCAssembly
           ! stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
           !    Basis, dBasisdx )
 
-          IF(MSModel % UseMGS) THEN
+          IF(ExternalHB) THEN
             IF (MSModel % av_piola) THEN
               stat = EdgeElementInfo( Element, Nodes, u, v, w, &
                   DetF = DetJ, Basis = Basis, EdgeBasis = msmodel % WBasis, &
@@ -1591,11 +1593,18 @@ END SUBROUTINE BCAssembly
           Weight = Weight * detJ
           IF ( CSymmetry ) Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
 
-          CALL LocalStress( Stress, Strain, PoissonRatio, &
-              ElasticModulus, HeatExpansionCoeff, LocalTemperature, &
-              Isotropic, CSymmetry, PlaneStress, LocalDisplacement, &
-              Basis, dBasisdx, Nodes, dim, n, nd, MSModel )
-
+          IF( ExternalHB ) THEN
+            CALL LocalStress( Stress, Strain, PoissonRatio, &
+                ElasticModulus, HeatExpansionCoeff, LocalTemperature, &
+                Isotropic, CSymmetry, PlaneStress, LocalDisplacement, &
+                Basis, dBasisdx, Nodes, dim, n, nd, MSModel )
+          ELSE
+            CALL LocalStress( Stress, Strain, PoissonRatio, &
+                ElasticModulus, HeatExpansionCoeff, LocalTemperature, &
+                Isotropic, CSymmetry, PlaneStress, LocalDisplacement, &
+                Basis, dBasisdx, Nodes, dim, n, nd )
+          END IF
+            
           DO p=1,nd
             DO q=1,nd
               MASS(p,q) = MASS(p,q) + Weight*Basis(q)*Basis(p)

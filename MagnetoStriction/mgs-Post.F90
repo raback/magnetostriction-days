@@ -129,8 +129,10 @@ SUBROUTINE MgsPost_bulk( Model,Solver,dt,TransientSimulation )
     LOAD = 0.0_dp
 
     CALL GetElementNodes(Nodes, Element)
-    CALL CollectMSModel(GetMaterial(Element), Element, MSModel, Model)
 
+    IF( ExternalHB ) THEN
+      CALL CollectMSModel(GetMaterial(Element), Element, MSModel, Model)
+    END IF
 
     IP = GaussPoints(Element)
     n_local_dofs = GetElementNOFDOFs(Element)

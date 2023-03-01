@@ -102,22 +102,27 @@ MODULE MgsStressLocal
     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), B_ip(3)
 
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    TYPE(MSModel_t) :: MSModel
+    TYPE(MSModel_t), SAVE :: MSModel
 
     INTEGER :: N_Integ
 
     REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
     LOGICAL :: stat, CSymmetry, NeedMass, NeedHeat, NeedStress, NeedHarmonic, &
-      NeedPreStress, ActiveGeometricStiffness
+      NeedPreStress, ActiveGeometricStiffness, ExternalHB, Found
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Model_t), OPTIONAL :: Model
     ! TYPE(Variable_t), POINTER :: FluxVariable
     !------------------------------------------------------------------------------
 
+    
     Material => GetMaterial()
-    CALL CollectMSModel(Material, Element, MSModel, Model=Model)
 
+    ExternalHB = ListGetLogical( Material, 'External HB model', Found)
+    IF(ExternalHB) THEN
+      CALL CollectMSModel(Material, Element, MSModel, Model=Model)
+    END IF
+    
     ! FluxVariable => VariableGet(MSModel % MgDynSolver % Mesh % Variables, 'magnetic flux density e')
     ! CALL GetVectorLocalSolution(B_coeff,'magnetic flux density e',UVariable=FluxVariable)
 
@@ -144,11 +149,11 @@ MODULE MgsStressLocal
     ! ------------------
     NBasis = ntot
 
-    IF(MSModel % UseMGS) THEN
+    IF(ExternalHB) THEN
       IntegStuff = GaussPoints( element, EdgeBasis=.TRUE., RelOrder = RelIntegOrder, &
           PReferenceElement = MSModel % av_piola, EdgeBasisDegree=1)
-      ELSE
-        IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
+    ELSE
+      IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
     END IF
 
     U_Integ => IntegStuff % u
@@ -167,7 +172,7 @@ MODULE MgsStressLocal
       !------------------------------------------------------------------------------
       !      Basis function values & derivatives at the integration point
       !------------------------------------------------------------------------------
-      IF(MSModel % UseMGS) THEN
+      IF(ExternalHB) THEN
         IF (MSModel % av_piola) THEN
           stat = EdgeElementInfo( Element, Nodes, u, v, w, &
             DetF = DetJ, Basis = Basis, EdgeBasis = msmodel % WBasis, &
@@ -176,7 +181,7 @@ MODULE MgsStressLocal
             ApplyPiolaTransform = .TRUE.)
         ELSE
           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
-
+          
           CALL GetEdgeBasis(Element, msmodel % WBasis, msmodel % RotWBasis, Basis, dBasisdx)
         END IF
       ELSE
@@ -228,10 +233,11 @@ MODULE MgsStressLocal
 
 
       SELECT CASE(dim)
+
       CASE(2)
-        IF(MSModel % UseMGS) &
+        IF(ExternalHB) THEN
           CALL Fatal('MgsStressCompose', 'MagnetoStriction not implemented in 2D')
-        IF ( CSymmetry ) THEN
+        ELSE IF ( CSymmetry ) THEN
           IF ( Isotropic(1) ) THEN
             C(1,1) = 1.0d0 - Poisson
             C(1,2) = Poisson
@@ -292,7 +298,7 @@ MODULE MgsStressLocal
         END IF
 
       CASE(3)
-        IF(MSModel % UseMGS) THEN
+        IF(ExternalHB) THEN
           IF (.NOT. Isotropic(1) ) CALL Fatal('MgsStressCompose', &
             'Non-isotropic stress-strain and MagnetoStriction is not supported.')
 
@@ -345,14 +351,13 @@ MODULE MgsStressLocal
             C = C * Young / ( (1+Poisson) * (1-2*Poisson) )
             !--------------------------------------------------------------------------------
             !   Rotate elasticity tensor if required
-
+            
           ELSE
             IF ( RotateC ) THEN
               CALL RotateElasticityMatrix( C, TransformMatrix, 3 )
             END IF
           END IF
         END IF
-
       END SELECT
 
       ActiveGeometricStiffness = StabilityAnalysis.OR.GeometricStiffness
@@ -467,7 +472,7 @@ MODULE MgsStressLocal
 #if 1
       ! Newton: Df_n \cdot x_{n+1} = Df_n \cdot x_n - f(x_n)
       ! Here is the "f(x_n)" part.
-        IF( MSModel % UseMGS) THEN
+        IF( ExternalHB ) THEN
           DO i=1,3
             DO j=1,3
               LoadAtIp(i) = LoadAtIp(i) - stress(i,j)*dBasisdx(p,j)
@@ -492,7 +497,7 @@ MODULE MgsStressLocal
             END DO
           END IF
 
-          IF(MSModel % UseMGS) THEN
+          IF(ExternalHB) THEN
             A = 0_dp
             DO k = 1,dim
               DO l = 1,dim
@@ -650,7 +655,7 @@ MODULE MgsStressLocal
 #if 1
     ! Newton: Df_n \cdot x_{n+1} = Df_n \cdot x_n - f(x_n)
     ! Df_n \cdot x_n part
-    IF(MSModel % UseMGS) THEN
+    IF(ExternalHB) THEN
       !IF(GetNonlinIter() > 1 .or. .true.) THEN
         DO i=1,NBasis
           DO p=1,NBasis

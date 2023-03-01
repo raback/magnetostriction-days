@@ -1724,8 +1724,6 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
-
-    LOGICAL :: FirstTime = .TRUE.
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1760,13 +1758,11 @@ CONTAINS
 
     CALL GetScalarLocalSolution(Aloc)
 
+    HBCurve = .FALSE.
     ExternalHB = ListGetLogical( Material, 'External HB model', Found)
-    IF(.not. Found) ExternalHB = .FALSE.
     IF(ExternalHB) THEN
       CALL CollectMSModel(Material, element, MSModel, Model)
-    END IF
-
-    !IF(.NOT. ExternalHB) THEN  ! DEBUG
+    ELSE
       CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
       siz = 0
       Cval => NULL()
@@ -1784,7 +1780,7 @@ CONTAINS
           HBCurve = .TRUE.
         END IF
       END IF
-
+      
       IF(siz<=1) THEN
         Lst => ListFind(Material,'H-B Curve',HBcurve)
         IF(HBcurve) THEN
@@ -1792,10 +1788,6 @@ CONTAINS
           Bval => Lst % TValues
           Hval => Lst % FValues(1,1,:)
         END IF
-      !END IF ! DEBUG
-
-      IF(HBCurve) THEN
-        CALL GetScalarLocalSolution(Aloc)
       END IF
     END IF
 
@@ -1846,36 +1838,35 @@ CONTAINS
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
 
-       !IF(.NOT. ExternalHB) THEN
-         IF ( HBCurve ) THEN
-           B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
-           babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-           mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
-           dHdB = 0_dp
-           DO i=1,3
-             dHdB(i,i) = mu
-           END DO
-           H = mu*B_ip
-         ELSE
-           B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
-           babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-           H = mu*B_ip
-           dHdB = 0_dp
-           DO i=1,3
-             dHdB(i,i) = mu
-           END DO
-         END IF
-       !ELSE ! DEBUG
-         IF(ExternalHB) THEN
-           B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
-           babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-           LGrad = MATMUL( msmodel % sloc(:,1:n), dBasisdx(1:n,:) )
-           Strain_ten = ( LGrad + TRANSPOSE(LGrad) ) / 2 ! DEBUG
+       IF(ExternalHB) THEN
+         B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+         LGrad = MATMUL( msmodel % sloc(:,1:n), dBasisdx(1:n,:) )
+         Strain_ten = ( LGrad + TRANSPOSE(LGrad) ) / 2 ! DEBUG
 
-           CALL CalcHB(MSModel, B_in=B_ip, H=H, dHdB=dHdB, e_in=strain_ten)
-           mu = dHdB(1,1)
-         END IF
-       !END IF ! DEBUG
+         CALL CalcHB(MSModel, B_in=B_ip, H=H, dHdB=dHdB, e_in=strain_ten)
+         mu = dHdB(1,1)
+
+         !IF(t==1) PRINT *,'ExternalHB',Babs,Lgrad,MAXVAL(Strain_ten),mu
+         
+       ELSE IF ( HBCurve ) THEN
+         B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
+         dHdB = 0_dp
+         DO i=1,3
+           dHdB(i,i) = mu
+         END DO
+         H = mu*B_ip
+       ELSE
+         B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+         H = mu*B_ip
+         dHdB = 0_dp
+         DO i=1,3
+           dHdB(i,i) = mu
+         END DO
+       END IF
        ! ------------------------------------------------------------------
        ! Compute element stiffness matrix and force vector.
        ! If we calculate a coil, the nodal degrees of freedom are not used.
@@ -2017,9 +2008,6 @@ CONTAINS
     IF ( Newton ) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
-    END IF
-    IF (ExternalHB) THEN
-      FirstTime = .False.
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -4182,11 +4170,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          LGrad = MATMUL( msmodel % sloc(:,1:msmodel % s_nd(1)), dBasisdx(1:msmodel % s_nd(1),:) )
          Strain_ten = ( LGrad + TRANSPOSE(LGrad) ) / 2
          CALL CalcHB(MSModel, B_in = B(1,1:3), H=H_ip, e_in = strain_ten)
-         R_ip = sqrt( sum(B(1,:)*B(1,:))/(sum(H_ip(1,:)*H_ip(1,:))+1e-8) )
+         R_ip = SQRT( SUM(B(1,:)*B(1,:))/(SUM(H_ip(1,:)*H_ip(1,:))+1e-8) )
+
+         !IF(j==1) PRINT *,'ExternalHB CF:',i,R_ip, Lgrad 
        END IF
 
 
-       IF(.not. ExternalHB) THEN
+       IF(.NOT. ExternalHB) THEN
          IF ( ASSOCIATED(HB) ) THEN
            Babs=SQRT(SUM(B(1,:)**2))
            R_ip = InterpolateCurve(HBBval,HBHval,Babs,HBCval)/Babs
