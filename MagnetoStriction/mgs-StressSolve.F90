@@ -828,7 +828,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-    INTEGER :: RelIntegOrder
+    INTEGER :: RelIntegOrder, active
     logical :: MgsReported = .FALSE., NoMgsReported = .FALSE.
 
      CALL StartAdvanceOutput( 'MgsStressSolve', 'Assembly:')
@@ -837,10 +837,11 @@ CONTAINS
      RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order',Found)
 
 
-     DO t=1,Solver % NumberOFActiveElements
+     active = GetNOFActive()
+     DO t=1,active
 
 !------------------------------------------------------------------------------
-       CALL AdvanceOutput(t,GetNOFActive())
+       CALL AdvanceOutput(t,active)
 !------------------------------------------------------------------------------
 
        Element => GetActiveElement(t)

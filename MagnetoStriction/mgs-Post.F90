@@ -43,10 +43,10 @@ SUBROUTINE write_element(Element)
     USE types, only: element_t
     IMPLICIT NONE
     TYPE(Element_t), POINTER:: Element
-    write (*,"(A, I5)", advance="NO"), 'Type:', Element % TYPE % ElementCode
-    write (*, *), 'DGIndexes', Element % DGIndexes(:)
-    write (*, *), 'Bodyid', Element % BodyID
-    write (*, *), 'NDOFs, bdofs, dgdofs', Element % ndofs, &
+    write (*,"(A, I5)", advance="NO") 'Type:', Element % TYPE % ElementCode
+    write (*, *) 'DGIndexes', Element % DGIndexes(:)
+    write (*, *) 'Bodyid', Element % BodyID
+    write (*, *) 'NDOFs, bdofs, dgdofs', Element % ndofs, &
         Element % bdofs, Element % dgdofs
 
 END SUBROUTINE write_element
@@ -73,7 +73,7 @@ SUBROUTINE MgsPost_bulk( Model,Solver,dt,TransientSimulation )
   TYPE(MSModel_t) :: MSModel
   TYPE(GaussIntegrationPoints_t) :: IP
 
-  INTEGER :: m, n, i, j, t, p, q, n_local_dofs, TotNDofs, nd
+  INTEGER :: m, n, i, j, t, p, q, n_local_dofs, TotNDofs, nd, active
   INTEGER, parameter :: stressdofs = 6
   INTEGER, parameter :: Voigtmap(3,3) = reshape([1,4,6,4,2,5,6,5,3],[3,3])
   INTEGER, parameter :: inverseVoigtmap(2,6) = reshape([1,1,2,2,3,3,1,2,2,3,1,3],[2,6])
@@ -120,7 +120,8 @@ SUBROUTINE MgsPost_bulk( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultInitialize()
 
-  DO m = 1,GetNOFActive()
+  active = GetNOFActive()
+  DO m = 1,active
     Element => GetActiveElement(m)
     ExternalHB = ListGetElementLogical( ExternalHB_h, Element, Found )
     IF (.NOT. ExternalHB) CYCLE

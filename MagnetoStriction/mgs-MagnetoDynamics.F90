@@ -102,6 +102,7 @@ CONTAINS
   END FUNCTION GetBoundaryEdgeIndex
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryFaceIndex(Boundary) RESULT(n)
 !------------------------------------------------------------------------------
@@ -974,7 +975,8 @@ CONTAINS
    IF (SecondOrder) EdgeBasisDegree = 2
 
    U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
-   DO i=1,GetNOFActive()
+   active = GetNOFActive()
+   DO i=1,active
      Element => GetActiveElement(i)
      nd = GetElementNOFDOFs(Element)
      n  = GetElementNOFNodes(Element)
@@ -1624,7 +1626,7 @@ CONTAINS
            END DO
          END IF
        ELSE
-         IF (.NOT.TreeEdges(k)) CALL SetDOFToValue(Solver,k,0._dp)
+         IF (.NOT.TreeEdges(k)) CALL SetDOFToValueR(Solver,k,0._dp)
          IF=IF+1; Fifo(IF)=l
          Previous(l)=j
          Done(l)=.TRUE.
@@ -1678,7 +1680,7 @@ CONTAINS
       Edge => Mesh % Edges(k)
       IF (ALL(Done(Edge % NodeIndexes))) CYCLE
 
-      IF ( .NOT. TreeEdges(k)) CALL SetDOFToValue(Solver,k,0._dp)
+      IF ( .NOT. TreeEdges(k)) CALL SetDOFToValueR(Solver,k,0._dp)
       TreeEdges(k)=.TRUE.
       DO l=1,2
         n = Edge % NodeIndexes(l)
@@ -2507,7 +2509,7 @@ CONTAINS
       ! ...and finally we should have the edge value:
       ! ---------------------------------------------
       IF ( je2<je1 ) S=-S
-      CALL SetDOFtoValue(Solver,dMap(j),S)
+      CALL SetDOFtoValueR(Solver,dMap(j),S)
     END DO
     DEALLOCATE(dMap, CycleEdges, FaceMap, UsedFaces, Bn)
     CALL List_FreeMatrix(SIZE(BasicCycles), BasicCycles)
@@ -2695,7 +2697,7 @@ CONTAINS
 
     TYPE(Matrix_t), POINTER :: gm
     INTEGER, ALLOCATABLE :: narr(:)
-    INTEGER :: l,m,ncols,ierr,status(MPI_STATUS_SIZE)
+    INTEGER :: l,m,ncols,ierr,active,status(MPI_STATUS_SIZE)
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
 
@@ -2709,7 +2711,8 @@ CONTAINS
     END IF
     ALLOCATE( Basis(n), dBasisdx(n,3) )
 
-    DO elem = 1,GetNOFActive()
+    active = GetNOFActive()
+    DO elem = 1,active
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
@@ -2851,7 +2854,7 @@ CONTAINS
                 ! other owners...
                 ! -------------------------------------------------------
                 IF (Parenv % PEs>1) THEN
-                   IF(A % ParallelInfo % NodeInterface(p)) THEN
+                   IF(A % ParallelInfo % NodeINTERFACE(p)) THEN
                       DO l=1,SIZE(A % ParallelInfo % Neighbourlist(p) % Neighbours)
                          m=A % ParallelInfo % NeighbourList(p) % Neighbours(l)
                          IF(m/=ParEnv % MyPE) THEN
@@ -3065,8 +3068,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
   CALL ListAddLogical( SolverParams, 'Optimize Bandwidth',.FALSE.)
   CALL ListAddString( SolverParams, 'Equation', 'never' )
+!  CALL ListAddString( SolverParams, 'Procedure', &
+!              'MagnetoStriction MagnetoDynamics_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Procedure', &
-              'MagnetoDynamics MagnetoDynamics_Dummy',.FALSE. )
+              'AllocateSolver AllocateSolver',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput cf_dummy' )
 
 
@@ -3717,7 +3722,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ImposeBodyForceCurrent = .FALSE.
      ImposeCircuitCurrent = .FALSE.
    END IF
-   DO i = 1, GetNOFActive()
+   active = GetNOFActive()
+   DO i = 1, active
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
@@ -4743,9 +4749,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF(ASSOCIATED(NF)) THEN
      CALL NodalTorque(Torque, TorqueGroups)
      DO i=1,size(TorqueGroups)
-       write (Message,'("res: Group ", i0, " torque")'), TorqueGroups(i)
+       write (Message,'("res: Group ", i0, " torque")') TorqueGroups(i)
        CALL ListAddConstReal(Model % Simulation, trim(Message), Torque(i))
-       write (Message,'("Torque Group ", i0, " torque: ", f0.8)'), TorqueGroups(i), Torque(i)
+       write (Message,'("Torque Group ", i0, " torque: ", f0.8)') TorqueGroups(i), Torque(i)
        call Info( 'MagnetoDynamicsCalcFields', Message)
      END DO
 
@@ -5140,7 +5146,8 @@ CONTAINS
    T = 0._dp
    P = 0._dp
 
-   DO pnodal=1,GetNOFActive()
+   active = GetNOFActive()
+   DO pnodal=1,active
      Element => GetActiveElement(pnodal)
      IF(GetLogical(GetBodyParams(Element), 'Calculate Torque over body', Found)) THEN
        ndofs = GetElementDOFs(ElemNodeDofs)
@@ -5257,7 +5264,7 @@ CONTAINS
      DO k = 1, num_axes
        nrm = NORM2(axes(k,:))
        IF (nrm .EQ. 0._dp) THEN
-         WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
+         WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")') k
          CALL Warn('MagnetoDynamicsCalcFields',Message)
          CYCLE
        END IF
@@ -5271,8 +5278,8 @@ CONTAINS
    VisitedNode = .FALSE.
    T = 0._dp
 
-
-   DO pnodal=1,GetNOFActive()
+   active = GetNOFActive()
+   DO pnodal=1,active
      Element => GetActiveElement(pnodal)
      BodyParams => GetBodyParams(Element)
      LocalGroups => ListGetIntegerArray(BodyParams, "Torque Groups", Found)
